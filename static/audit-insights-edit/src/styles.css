@@ -1,0 +1,219 @@
+:root {
+  font-family: "Segoe UI", sans-serif;
+  color: #172b4d;
+  background:
+    radial-gradient(circle at top left, rgba(12, 102, 228, 0.14), transparent 38%),
+    linear-gradient(180deg, #f8fafc 0%, #eef4ff 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+body,
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.shell {
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.hero {
+  margin-bottom: 20px;
+}
+
+.hero h1 {
+  margin: 4px 0 8px;
+  font-size: 28px;
+}
+
+.hero-copy {
+  color: #5e6c84;
+}
+
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 12px;
+  color: #0c66e4;
+}
+
+.config-form,
+.state-panel {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(9, 30, 66, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(9, 30, 66, 0.06);
+}
+
+.config-form {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.config-section,
+.preview-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.section-header p {
+  margin: 6px 0 0;
+  color: #5e6c84;
+  font-weight: 400;
+}
+
+.config-form label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.checks-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.checks-header p {
+  margin: 6px 0 0;
+  color: #5e6c84;
+  font-weight: 400;
+}
+
+.checks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.check-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #c1c7d0;
+  border-radius: 12px;
+  background: #fff;
+  font-weight: 600;
+}
+
+.check-card input {
+  width: auto;
+}
+
+.check-card small {
+  color: #5e6c84;
+  font-weight: 400;
+}
+
+.check-card-on {
+  border-color: #0c66e4;
+  box-shadow: 0 0 0 1px rgba(12, 102, 228, 0.16);
+}
+
+.preview-actions,
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.secondary-button {
+  justify-self: start;
+  padding: 10px 16px;
+  border: 1px solid #0c66e4;
+  border-radius: 999px;
+  background: #fff;
+  color: #0c66e4;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-button:disabled {
+  opacity: 0.65;
+  cursor: progress;
+}
+
+.preview-health,
+.preview-empty {
+  color: #5e6c84;
+}
+
+.preview-list {
+  display: grid;
+  gap: 10px;
+}
+
+.preview-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #c1c7d0;
+}
+
+.preview-critical {
+  border-left: 5px solid #ae2e24;
+}
+
+.preview-warning {
+  border-left: 5px solid #b38600;
+}
+
+.preview-healthy {
+  border-left: 5px solid #1f845a;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+input,
+textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #c1c7d0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.primary-button {
+  justify-self: start;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #0c66e4, #1d7afc);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary-button:disabled {
+  opacity: 0.65;
+  cursor: progress;
+}
+
+.state-panel {
+  padding: 20px;
+  color: #ae2e24;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    padding: 16px;
+  }
+}

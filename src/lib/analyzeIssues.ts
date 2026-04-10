@@ -1,6 +1,7 @@
 import { diffDays, isPastDate } from "./dateUtils";
 import {
   type AuditInsightsResponse,
+  type InsightCheckId,
   type Insight,
   type InsightThresholds,
   type IssueLike,
@@ -8,9 +9,23 @@ import {
 } from "../types/insights";
 
 const DONE_STATUSES = new Set(["done", "closed", "resolved"]);
+const IN_PROGRESS_STATUSES = new Set(["in progress", "in-progress", "doing"]);
+const HIGH_PRIORITY_NAMES = new Set(["highest", "high", "critical", "blocker"]);
 
 function isDoneStatus(status: string): boolean {
   return DONE_STATUSES.has(status.trim().toLowerCase());
+}
+
+function isInProgressStatus(status: string): boolean {
+  return IN_PROGRESS_STATUSES.has(status.trim().toLowerCase());
+}
+
+function isHighPriority(priorityName?: string | null): boolean {
+  if (!priorityName) {
+    return false;
+  }
+
+  return HIGH_PRIORITY_NAMES.has(priorityName.trim().toLowerCase());
 }
 
 function roundPercent(count: number, total: number): number {
@@ -22,7 +37,7 @@ function roundPercent(count: number, total: number): number {
 }
 
 function buildInsight(input: {
-  id: string;
+  id: InsightCheckId;
   severity: Insight["severity"];
   title: string;
   count: number;
@@ -57,6 +72,7 @@ function deriveHealth(insights: Insight[]): QueueHealth {
 export function analyzeIssues(
   issues: IssueLike[],
   thresholds: InsightThresholds,
+  enabledChecks: InsightCheckId[],
   now: Date = new Date()
 ): AuditInsightsResponse {
   const overdueCount = issues.filter((issue) => {
@@ -91,9 +107,49 @@ export function analyzeIssues(
     return diffDays(issue.statusEnteredAt, now) >= thresholds.agingInStatusDays;
   }).length;
 
+  const unassignedCount = issues.filter((issue) => {
+    if (isDoneStatus(issue.status)) {
+      return false;
+    }
+
+    return !issue.assigneeAccountId;
+  }).length;
+
+  const missingDueDateCount = issues.filter((issue) => {
+    if (isDoneStatus(issue.status)) {
+      return false;
+    }
+
+    return !issue.dueDate;
+  }).length;
+
+  const longRunningInProgressCount = issues.filter((issue) => {
+    if (isDoneStatus(issue.status) || !issue.statusEnteredAt || !isInProgressStatus(issue.status)) {
+      return false;
+    }
+
+    return diffDays(issue.statusEnteredAt, now) >= thresholds.longRunningInProgressDays;
+  }).length;
+
+  const missingPriorityCount = issues.filter((issue) => {
+    if (isDoneStatus(issue.status)) {
+      return false;
+    }
+
+    return !issue.priorityName;
+  }).length;
+
+  const priorityMismatchCount = issues.filter((issue) => {
+    if (isDoneStatus(issue.status) || !isHighPriority(issue.priorityName)) {
+      return false;
+    }
+
+    return diffDays(issue.updatedAt, now) >= thresholds.highPriorityStaleDays;
+  }).length;
+
   const totalIssues = issues.length;
 
-  const insights = [
+  const allInsights = [
     buildInsight({
       id: "overdue",
       severity: overdueCount > 0 ? "critical" : "healthy",
@@ -125,8 +181,49 @@ export function analyzeIssues(
       count: agingInStatusCount,
       total: totalIssues,
       drillDownJql: ""
+    }),
+    buildInsight({
+      id: "unassigned",
+      severity: unassignedCount > 0 ? "critical" : "healthy",
+      title: "Unassigned issues",
+      count: unassignedCount,
+      total: totalIssues,
+      drillDownJql: "assignee is EMPTY AND statusCategory != Done"
+    }),
+    buildInsight({
+      id: "missing-due-date",
+      severity: missingDueDateCount > 0 ? "warning" : "healthy",
+      title: "Missing due dates",
+      count: missingDueDateCount,
+      total: totalIssues,
+      drillDownJql: "duedate is EMPTY AND statusCategory != Done"
+    }),
+    buildInsight({
+      id: "long-running-in-progress",
+      severity: longRunningInProgressCount > 0 ? "warning" : "healthy",
+      title: "Long-running in progress",
+      count: longRunningInProgressCount,
+      total: totalIssues,
+      drillDownJql: ""
+    }),
+    buildInsight({
+      id: "missing-priority",
+      severity: missingPriorityCount > 0 ? "warning" : "healthy",
+      title: "Missing priority",
+      count: missingPriorityCount,
+      total: totalIssues,
+      drillDownJql: "priority is EMPTY AND statusCategory != Done"
+    }),
+    buildInsight({
+      id: "priority-mismatch",
+      severity: priorityMismatchCount > 0 ? "critical" : "healthy",
+      title: "High priority neglected",
+      count: priorityMismatchCount,
+      total: totalIssues,
+      drillDownJql: ""
     })
   ];
+  const insights = allInsights.filter((insight) => enabledChecks.includes(insight.id));
 
   return {
     health: deriveHealth(insights),
@@ -135,9 +232,13 @@ export function analyzeIssues(
       overdueCount,
       staleCount,
       slaRiskCount,
-      agingInStatusCount
+      agingInStatusCount,
+      unassignedCount,
+      missingDueDateCount,
+      longRunningInProgressCount,
+      missingPriorityCount,
+      priorityMismatchCount
     },
     insights
   };
 }
-

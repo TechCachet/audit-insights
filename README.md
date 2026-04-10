@@ -10,11 +10,13 @@ Insight-first Jira dashboard app for surfacing queue risk, SLA exposure, and wor
 
 ## Current project status
 
-This repository is the initial design and application skeleton.
+This repository now contains the initial Forge MVP structure in addition to the product docs and insight engine.
 
 - Product and architecture docs are in [`docs/`](./docs)
-- Core insight engine code is in [`src/`](./src)
-- Forge CLI scaffolding has not been run yet
+- Forge backend code is in [`src/`](./src)
+- Custom UI gadget frontend is in [`static/audit-insights-ui/`](./static/audit-insights-ui)
+- Forge manifest is in [`manifest.yml`](./manifest.yml)
+- Forge app registration is still pending because the local Forge credentials need to be refreshed
 
 ## Recommended repo setup
 
@@ -28,10 +30,24 @@ Suggested repo names:
 - `jira-audit-risk-insights`
 - `audit-insights-for-jira`
 
+## MVP structure
+
+- `manifest.yml`: Jira dashboard gadget module, resolver function, Custom UI resource
+- `src/index.ts`: Forge resolver entrypoint
+- `src/resolvers/getDashboardAuditInsights.ts`: Jira search integration plus insight engine wiring
+- `src/lib/analyzeIssues.ts`: pure audit insight logic
+- `static/audit-insights-ui/`: React + Vite gadget UI for both view and edit states
+
+## Useful commands
+
+- `npm.cmd install`
+- `npm.cmd run typecheck`
+- `npm.cmd run build:ui`
+- `powershell -Command "& \"$env:APPDATA\\npm\\forge.cmd\" lint"`
+
 ## Next steps
 
-1. Create the GitHub repository and push this local repo
-2. Install the Forge CLI
-3. Run the Forge app scaffold in this folder
-4. Wire the existing `src` logic into Forge resolvers and Custom UI
-
+1. Refresh Forge login with a valid Atlassian API token
+2. Run `forge register` to generate and write the app `id`
+3. Run `forge lint`
+4. Deploy and install the app into a Jira Cloud site for gadget testing

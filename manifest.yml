@@ -1,0 +1,30 @@
+modules:
+  jira:dashboardGadget:
+    - key: techcachet-audit-risk-insights-gadget
+      title: TechCachet Audit & Risk Insights
+      description: Surface queue risk, SLA exposure, and workflow bottlenecks from
+        Jira issues.
+      thumbnail: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+      resource: audit-insights-view
+      resolver:
+        function: audit-insights-resolver
+      edit:
+        resource: audit-insights-edit
+  function:
+    - key: audit-insights-resolver
+      handler: index.handler
+
+resources:
+  - key: audit-insights-view
+    path: static/audit-insights-view/dist
+  - key: audit-insights-edit
+    path: static/audit-insights-edit/dist
+
+permissions:
+  scopes:
+    - read:jira-work
+
+app:
+  runtime:
+    name: nodejs22.x
+  id: ari:cloud:ecosystem::app/50040060-88f5-4fe8-820d-fe0ac2cf7a8c
