@@ -10,15 +10,26 @@ type InsightCheckId =
   | "missing-due-date"
   | "long-running-in-progress"
   | "missing-priority"
-  | "priority-mismatch";
+  | "priority-mismatch"
+  | "custom";
+
+type ConfigurableInsightSeverity = "critical" | "warning";
 
 type GadgetConfig = {
+  title?: string;
   jql: string;
   limit: number;
   refresh?: number;
   displayLimit?: number;
   priorityOffset?: number;
   enabledChecks?: InsightCheckId[];
+  customCheck?: {
+    enabled: boolean;
+    title: string;
+    jqlCondition: string;
+    severity: ConfigurableInsightSeverity;
+    actionText: string;
+  };
   thresholds: {
     staleAfterDays: number;
     agingInStatusDays: number;
@@ -53,6 +64,7 @@ type DashboardData = {
     percent: number;
     severity: InsightSeverity;
     drillDownJql: string;
+    actionText?: string;
   }>;
   query: {
     jql: string;
@@ -71,12 +83,20 @@ type ViewContext = {
 };
 
 const DEFAULT_CONFIG: GadgetConfig = {
+  title: "Audit & Risk Insights",
   jql: "project is not EMPTY ORDER BY updated DESC",
   limit: 50,
   refresh: 15,
   displayLimit: 4,
   priorityOffset: 0,
   enabledChecks: ["overdue", "stale", "sla-risk", "aging-status"],
+  customCheck: {
+    enabled: false,
+    title: "Custom check",
+    jqlCondition: "",
+    severity: "critical",
+    actionText: "Review the matching issues for this custom risk condition."
+  },
   thresholds: {
     staleAfterDays: 5,
     agingInStatusDays: 7,
@@ -95,7 +115,8 @@ const ACTION_GUIDANCE: Record<string, string> = {
   "missing-due-date": "Add due dates to work that needs deadline visibility and audit traceability.",
   "long-running-in-progress": "Check why these active issues have remained in progress for so long.",
   "missing-priority": "Set priorities so triage and reporting reflect the actual business impact.",
-  "priority-mismatch": "Review neglected high-priority work immediately and escalate if ownership is unclear."
+  "priority-mismatch": "Review neglected high-priority work immediately and escalate if ownership is unclear.",
+  custom: "Review the matching issues for this custom risk condition."
 };
 
 const SEVERITY_WEIGHT: Record<InsightSeverity, number> = {
@@ -153,6 +174,39 @@ function MetricCard(props: {
 }
 
 type MetricTone = "neutral" | "warning" | "critical";
+
+function EmptyState({
+  totalIssues,
+  hasFindings
+}: {
+  totalIssues: number;
+  hasFindings: boolean;
+}) {
+  if (totalIssues === 0) {
+    return (
+      <div className="state-panel">
+        <h3>No issues found</h3>
+        <p>No issues matched your current JQL query. Try adjusting your filter in the gadget settings.</p>
+      </div>
+    );
+  }
+
+  if (!hasFindings) {
+    return (
+      <div className="state-panel success-panel">
+        <h3>All clear!</h3>
+        <p>No operational risks were detected in this issue sample. Your queue health looks great.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="state-panel">
+      <h3>No visible findings</h3>
+      <p>Try adjusting your 'priority offset' or 'display limit' in the gadget settings.</p>
+    </div>
+  );
+}
 
 export function App() {
   const [config, setConfig] = useState<GadgetConfig | null>(null);
@@ -398,7 +452,7 @@ export function App() {
         <div className="hero-copy-block">
           <p className="eyebrow">Queue health</p>
           <div className="hero-title-row">
-            <h1>Audit & Risk Insights</h1>
+            <h1>{config.title ? new DOMParser().parseFromString(config.title, "text/html").documentElement.textContent : "Audit & Risk Insights"}</h1>
             <HealthBadge health={data.health} />
           </div>
           <p className="hero-copy">
@@ -444,34 +498,42 @@ export function App() {
       </section>
 
       <section className="insights-list">
-        {visibleInsights.map((insight) => (
-          <button
-            key={insight.id}
-            type="button"
-            className={`insight-card insight-${insight.severity} ${
-              insight.count > 0 && insight.drillDownJql ? "insight-clickable" : "insight-static"
-            }`}
-            onClick={() => void openDrillDown(insight.drillDownJql)}
-            disabled={!(insight.count > 0 && insight.drillDownJql)}
-          >
-            <div className="insight-header">
-              <h2>{insight.title}</h2>
-              <span className={`badge badge-${insight.severity}`}>{insight.severity}</span>
-            </div>
-            <p>{insight.message}</p>
-            <div className="insight-footer">
-              <strong>{insight.count}</strong>
-              <span>{insight.percent}% of analyzed issues</span>
-            </div>
-            <p className="risk-note">
-              {ACTION_GUIDANCE[insight.id] ??
-                "Review the affected issues now so small delays do not become broader operational risk."}
-            </p>
-            {insight.count > 0 && insight.drillDownJql ? (
-              <span className="card-action">Open matching issues</span>
-            ) : null}
-          </button>
-        ))}
+        {visibleInsights.length > 0 ? (
+          visibleInsights.map((insight) => (
+            <button
+              key={insight.id}
+              type="button"
+              className={`insight-card insight-${insight.severity} ${
+                insight.count > 0 && insight.drillDownJql ? "insight-clickable" : "insight-static"
+              }`}
+              onClick={() => void openDrillDown(insight.drillDownJql)}
+              disabled={!(insight.count > 0 && insight.drillDownJql)}
+            >
+              <div className="insight-header">
+                <h2>{insight.title}</h2>
+                <span className={`badge badge-${insight.severity}`}>{insight.severity}</span>
+              </div>
+              <p>{insight.message}</p>
+              <div className="insight-footer">
+                <strong>{insight.count}</strong>
+                <span>{insight.percent}% of analyzed issues</span>
+              </div>
+              <p className="risk-note">
+                {insight.actionText ??
+                  ACTION_GUIDANCE[insight.id] ??
+                  "Review the affected issues now so small delays do not become broader operational risk."}
+              </p>
+              {insight.count > 0 && insight.drillDownJql ? (
+                <span className="card-action">Open matching issues</span>
+              ) : null}
+            </button>
+          ))
+        ) : (
+          <EmptyState
+            totalIssues={data.metrics.totalIssues}
+            hasFindings={data.insights.some((i) => i.count > 0)}
+          />
+        )}
       </section>
     </main>
   );

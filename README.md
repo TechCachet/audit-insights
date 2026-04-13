@@ -13,10 +13,12 @@ Insight-first Jira dashboard app for surfacing queue risk, SLA exposure, and wor
 This repository now contains the initial Forge MVP structure in addition to the product docs and insight engine.
 
 - Product and architecture docs are in [`docs/`](./docs)
+- Marketplace readiness checklist is in [`docs/marketplace-readiness-checklist.md`](./docs/marketplace-readiness-checklist.md)
+- Test-data seeding guide is in [`docs/seed-test-data.md`](./docs/seed-test-data.md)
 - Forge backend code is in [`src/`](./src)
-- Custom UI gadget frontend is in [`static/audit-insights-ui/`](./static/audit-insights-ui)
+- Custom UI gadget frontends are in [`static/audit-insights-view/`](./static/audit-insights-view) and [`static/audit-insights-edit/`](./static/audit-insights-edit)
 - Forge manifest is in [`manifest.yml`](./manifest.yml)
-- Forge app registration is still pending because the local Forge credentials need to be refreshed
+- Forge app is registered and deployable to the configured Forge environments
 
 ## Recommended repo setup
 

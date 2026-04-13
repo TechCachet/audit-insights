@@ -11,7 +11,18 @@ export type InsightCheckId =
   | "missing-due-date"
   | "long-running-in-progress"
   | "missing-priority"
-  | "priority-mismatch";
+  | "priority-mismatch"
+  | "custom";
+
+export type ConfigurableInsightSeverity = "critical" | "warning";
+
+export type CustomInsightConfig = {
+  enabled: boolean;
+  title: string;
+  jqlCondition: string;
+  severity: ConfigurableInsightSeverity;
+  actionText: string;
+};
 
 export type IssueLike = {
   key: string;
@@ -41,6 +52,7 @@ export type Insight = {
   count: number;
   percent: number;
   drillDownJql: string;
+  actionText?: string;
 };
 
 export type InsightMetrics = {

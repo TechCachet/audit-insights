@@ -1,12 +1,21 @@
 import { useEffect, useState } from "react";
 import { invoke, view } from "@forge/bridge";
 
+type ConfigurableInsightSeverity = "critical" | "warning";
+
 type GadgetConfig = {
   jql: string;
   limit: number;
   displayLimit?: number;
   priorityOffset?: number;
   enabledChecks?: InsightCheckId[];
+  customCheck?: {
+    enabled: boolean;
+    title: string;
+    jqlCondition: string;
+    severity: ConfigurableInsightSeverity;
+    actionText: string;
+  };
   thresholds: {
     staleAfterDays: number;
     agingInStatusDays: number;
@@ -15,6 +24,15 @@ type GadgetConfig = {
     highPriorityStaleDays: number;
   };
   refresh?: number;
+};
+
+type CustomCheckConfig = NonNullable<GadgetConfig["customCheck"]>;
+const DEFAULT_CUSTOM_CHECK: CustomCheckConfig = {
+  enabled: false,
+  title: "Custom check",
+  jqlCondition: "",
+  severity: "critical",
+  actionText: "Review the matching issues for this custom risk condition."
 };
 
 type InsightCheckId =
@@ -26,7 +44,8 @@ type InsightCheckId =
   | "missing-due-date"
   | "long-running-in-progress"
   | "missing-priority"
-  | "priority-mismatch";
+  | "priority-mismatch"
+  | "custom";
 
 type PreviewData = {
   health: "healthy" | "watchlist" | "at-risk";
@@ -96,6 +115,7 @@ const DEFAULT_CONFIG: GadgetConfig = {
   displayLimit: 4,
   priorityOffset: 0,
   enabledChecks: ["overdue", "stale", "sla-risk", "aging-status"],
+  customCheck: DEFAULT_CUSTOM_CHECK,
   thresholds: {
     staleAfterDays: 5,
     agingInStatusDays: 7,
@@ -106,14 +126,43 @@ const DEFAULT_CONFIG: GadgetConfig = {
   refresh: 15
 };
 
+function normalizeJqlText(value: string): string {
+  let normalized = value;
+
+  for (let i = 0; i < 3; i += 1) {
+    const nextValue = normalized
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, "\"")
+      .replace(/&#39;/gi, "'");
+
+    if (nextValue === normalized) {
+      break;
+    }
+
+    normalized = nextValue;
+  }
+
+  return normalized;
+}
+
 function mergeConfig(config?: Partial<GadgetConfig>): GadgetConfig {
   return {
     ...DEFAULT_CONFIG,
     ...config,
+    jql: normalizeJqlText(config?.jql ?? DEFAULT_CONFIG.jql),
     thresholds: {
       ...DEFAULT_CONFIG.thresholds,
       ...config?.thresholds
     },
+    customCheck: {
+      ...DEFAULT_CUSTOM_CHECK,
+      ...config?.customCheck,
+      jqlCondition: normalizeJqlText(
+        config?.customCheck?.jqlCondition ?? DEFAULT_CUSTOM_CHECK.jqlCondition
+      )
+    } as CustomCheckConfig,
     enabledChecks: config?.enabledChecks?.length
       ? config.enabledChecks
       : DEFAULT_CONFIG.enabledChecks
@@ -159,7 +208,13 @@ export function App() {
   }, []);
 
   function updateField<Key extends keyof GadgetConfig>(key: Key, value: GadgetConfig[Key]) {
-    setFormState((current) => ({ ...current, [key]: value }));
+    setFormState((current) => ({
+      ...current,
+      [key]:
+        key === "jql" && typeof value === "string"
+          ? (normalizeJqlText(value) as GadgetConfig[Key])
+          : value
+    }));
   }
 
   function updateThreshold(key: keyof GadgetConfig["thresholds"], value: number) {
@@ -186,13 +241,42 @@ export function App() {
     });
   }
 
+  function updateCustomCheck<Key extends keyof CustomCheckConfig>(
+    key: Key,
+    value: CustomCheckConfig[Key]
+  ) {
+    setFormState((current) => ({
+      ...current,
+      customCheck: {
+        ...DEFAULT_CUSTOM_CHECK,
+        ...current.customCheck,
+        [key]:
+          key === "jqlCondition" && typeof value === "string"
+            ? normalizeJqlText(value)
+            : value
+      } as CustomCheckConfig
+    }));
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     setError(null);
 
+    const configToSave = {
+      title: formState.title,
+      jql: formState.jql,
+      limit: formState.limit,
+      displayLimit: formState.displayLimit,
+      priorityOffset: formState.priorityOffset,
+      enabledChecks: formState.enabledChecks,
+      customCheck: formState.customCheck,
+      thresholds: formState.thresholds,
+      refresh: formState.refresh
+    };
+
     try {
-      await view.submit(formState);
+      await view.submit(configToSave);
       await view.close();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save gadget configuration.");
@@ -218,6 +302,17 @@ export function App() {
     return <div className="state-panel">Loading gadget configuration...</div>;
   }
 
+  const previewInsights = preview
+    ? preview.insights.slice(
+        formState.priorityOffset ?? 0,
+        (formState.priorityOffset ?? 0) + (formState.displayLimit ?? 4)
+      )
+    : [];
+  const activePreviewCount = preview
+    ? preview.insights.filter((insight) => insight.count > 0).length
+    : 0;
+  const enabledPreviewCount = formState.enabledChecks?.length ?? 0;
+
   return (
     <main className="shell">
       <section className="hero">
@@ -231,6 +326,16 @@ export function App() {
       </section>
 
       <form className="config-form" onSubmit={handleSubmit}>
+        <label>
+          <span>Dashboard Title</span>
+          <input
+            type="text"
+            placeholder="e.g. Audit & Risk Insights"
+            value={formState.title ?? ""}
+            onChange={(event) => updateField("title", event.target.value)}
+          />
+          <small>Display name shown under 'Queue Health' on your dashboard.</small>
+        </label>
         <label>
           <span>JQL query</span>
           <textarea
@@ -382,6 +487,71 @@ export function App() {
           </div>
         </section>
 
+        <section className="config-section">
+          <div className="section-header">
+            <span>Custom check</span>
+            <p>
+              Add one org-specific JQL condition to monitor a risk pattern that is not built in.
+            </p>
+          </div>
+          <label className={`check-card ${formState.customCheck?.enabled ? "check-card-on" : ""}`}>
+            <input
+              type="checkbox"
+              checked={Boolean(formState.customCheck?.enabled)}
+              onChange={(event) => updateCustomCheck("enabled", event.target.checked)}
+            />
+            <span>Enable custom check</span>
+            <small>Use your base JQL plus one extra condition to create a custom insight card.</small>
+          </label>
+
+          {formState.customCheck?.enabled ? (
+            <div className="form-grid">
+              <label>
+                <span>Custom card title</span>
+                <input
+                  type="text"
+                  value={formState.customCheck.title}
+                  onChange={(event) => updateCustomCheck("title", event.target.value)}
+                />
+              </label>
+
+              <label>
+                <span>Severity</span>
+                <select
+                  value={formState.customCheck.severity}
+                  onChange={(event) =>
+                    updateCustomCheck("severity", event.target.value as ConfigurableInsightSeverity)
+                  }
+                >
+                  <option value="critical">Critical</option>
+                  <option value="warning">Warning</option>
+                </select>
+              </label>
+
+              <label className="full-width">
+                <span>Additional JQL condition</span>
+                <textarea
+                  rows={3}
+                  value={formState.customCheck.jqlCondition}
+                  onChange={(event) => updateCustomCheck("jqlCondition", event.target.value)}
+                />
+                <small>
+                  This gets appended to the base JQL as an additional filter condition.
+                </small>
+              </label>
+
+              <label className="full-width">
+                <span>Action guidance</span>
+                <textarea
+                  rows={2}
+                  value={formState.customCheck.actionText}
+                  onChange={(event) => updateCustomCheck("actionText", event.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
+        </section>
+
         <section className="preview-panel">
           <div className="section-header">
             <span>Preview</span>
@@ -397,21 +567,29 @@ export function App() {
               {previewing ? "Previewing..." : "Preview findings"}
             </button>
             {preview ? <span className="preview-health">Queue health: {preview.health}</span> : null}
+            {preview ? (
+              <span className="preview-summary">
+                {activePreviewCount} of {enabledPreviewCount} enabled checks currently active
+              </span>
+            ) : null}
           </div>
           {preview ? (
             <div className="preview-list">
-              {preview.insights
-                .filter((insight) => insight.count > 0)
-                .slice(formState.priorityOffset ?? 0, (formState.priorityOffset ?? 0) + (formState.displayLimit ?? 4))
-                .map((insight) => (
-                  <div key={insight.id} className={`preview-card preview-${insight.severity}`}>
+              {previewInsights.map((insight) => (
+                <div
+                  key={insight.id}
+                  className={`preview-card preview-${insight.severity} ${
+                    insight.count === 0 ? "preview-muted" : ""
+                  }`}
+                >
+                  <div className="preview-card-copy">
                     <strong>{insight.title}</strong>
-                    <span>{insight.count} matching issues</span>
+                    <span>
+                      {insight.count > 0 ? `${insight.count} matching issues` : "0 matching issues"}
+                    </span>
                   </div>
-                ))}
-              {preview.insights.filter((insight) => insight.count > 0).length === 0 ? (
-                <div className="preview-empty">No active findings for this configuration.</div>
-              ) : null}
+                </div>
+              ))}
             </div>
           ) : null}
         </section>

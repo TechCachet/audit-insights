@@ -1,6 +1,11 @@
 import api, { route } from "@forge/api";
 import { getAuditInsights } from "./getAuditInsights";
-import { type InsightCheckId, type InsightThresholds, type IssueLike } from "../types/insights";
+import {
+  type CustomInsightConfig,
+  type InsightCheckId,
+  type InsightThresholds,
+  type IssueLike
+} from "../types/insights";
 
 type DashboardConfig = {
   jql?: string;
@@ -8,6 +13,7 @@ type DashboardConfig = {
   displayLimit?: number;
   priorityOffset?: number;
   enabledChecks?: InsightCheckId[];
+  customCheck?: CustomInsightConfig;
   thresholds?: Partial<InsightThresholds>;
 };
 
@@ -59,6 +65,27 @@ const DEFAULT_ENABLED_CHECKS: InsightCheckId[] = [
   "aging-status"
 ];
 
+function normalizeJqlText(value: string): string {
+  let normalized = value;
+
+  for (let i = 0; i < 3; i += 1) {
+    const nextValue = normalized
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, "\"")
+      .replace(/&#39;/gi, "'");
+
+    if (nextValue === normalized) {
+      break;
+    }
+
+    normalized = nextValue;
+  }
+
+  return normalized;
+}
+
 function splitOrderByClause(jql: string): { filterJql: string; orderByClause: string } {
   const match = jql.match(/^(.*?)(\s+ORDER\s+BY\s+.+)$/i);
 
@@ -104,7 +131,20 @@ function buildDrillDownJqls(baseJql: string, thresholds: InsightThresholds) {
     "priority-mismatch": withBaseJql(
       baseJql,
       `priority in (Highest, High, Critical, Blocker) AND statusCategory != Done AND updated <= -${thresholds.highPriorityStaleDays}d`
-    )
+    ),
+    custom: ""
+  };
+}
+
+function normalizeCustomCheck(customCheck?: Partial<CustomInsightConfig>): CustomInsightConfig {
+  return {
+    enabled: Boolean(customCheck?.enabled),
+    title: customCheck?.title?.trim() || "Custom check",
+    jqlCondition: normalizeJqlText(customCheck?.jqlCondition?.trim() || ""),
+    severity: customCheck?.severity === "warning" ? "warning" : "critical",
+    actionText:
+      customCheck?.actionText?.trim() ||
+      "Review the matching issues for this custom risk condition."
   };
 }
 
@@ -150,9 +190,9 @@ function mapIssue(issue: JiraIssue): IssueLike {
 
 async function searchIssues(jql: string, maxResults: number): Promise<JiraSearchResponse> {
   const response = await api
-    .asApp()
+    .asUser()
     .requestJira(
-      route`/rest/api/3/search/jql?jql=${jql}&maxResults=${maxResults}&fields=status,assignee,priority,updated,created,duedate,statuscategorychangedate,summary`
+      route`/rest/api/3/search/jql?jql=${jql}&maxResults=${maxResults}&fields=status,assignee,priority,updated,created,duedate,statuscategorychangedate`
     );
 
   if (!response.ok) {
@@ -166,12 +206,13 @@ async function searchIssues(jql: string, maxResults: number): Promise<JiraSearch
 export async function getDashboardAuditInsights(
   config: DashboardConfig
 ): Promise<DashboardAuditInsightsResult> {
-  const jql = config.jql?.trim() || DEFAULT_JQL;
+  const jql = normalizeJqlText(config.jql?.trim() || DEFAULT_JQL);
   const maxResults = normalizeLimit(config.limit);
   const displayLimit = normalizeDisplayLimit(config.displayLimit);
   const priorityOffset = normalizePriorityOffset(config.priorityOffset);
   const enabledChecks =
     config.enabledChecks?.length ? config.enabledChecks : DEFAULT_ENABLED_CHECKS;
+  const customCheck = normalizeCustomCheck(config.customCheck);
   const thresholds: InsightThresholds = {
     staleAfterDays: 5,
     agingInStatusDays: 7,
@@ -188,13 +229,33 @@ export async function getDashboardAuditInsights(
     enabledChecks
   });
   const drillDownJqls = buildDrillDownJqls(jql, thresholds);
+  const allInsights = insights.insights.map((insight) => ({
+    ...insight,
+    drillDownJql: drillDownJqls[insight.id as keyof typeof drillDownJqls] ?? insight.drillDownJql
+  }));
+
+  if (customCheck.enabled && customCheck.jqlCondition) {
+    const customJql = withBaseJql(jql, customCheck.jqlCondition);
+    const customSearch = await searchIssues(customJql, maxResults);
+    const customCount = (customSearch.issues ?? []).length;
+    const totalIssues = insights.metrics.totalIssues;
+    const customPercent = totalIssues === 0 ? 0 : Math.round((customCount / totalIssues) * 100);
+
+    allInsights.push({
+      id: "custom",
+      severity: customCount > 0 ? customCheck.severity : "healthy",
+      title: customCheck.title,
+      message: `${customCount} issues (${customPercent}%) match this custom condition.`,
+      count: customCount,
+      percent: customPercent,
+      drillDownJql: customJql,
+      actionText: customCheck.actionText
+    });
+  }
 
   return {
     ...insights,
-    insights: insights.insights.map((insight) => ({
-      ...insight,
-      drillDownJql: drillDownJqls[insight.id as keyof typeof drillDownJqls] ?? insight.drillDownJql
-    })),
+    insights: allInsights,
     query: {
       jql,
       issueCount: issues.length,

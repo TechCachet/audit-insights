@@ -5,6 +5,7 @@
   "description": "Insight-first Jira audit and risk dashboard app.",
   "scripts": {
     "build:ui": "npm run build --prefix static/audit-insights-view && npm run build --prefix static/audit-insights-edit",
+    "seed:jira": "node scripts/seed-jira-data.mjs",
     "typecheck": "tsc --noEmit && npm run typecheck --prefix static/audit-insights-view && npm run typecheck --prefix static/audit-insights-edit",
     "lint:forge": "powershell -Command \"& \\\"$env:APPDATA\\\\npm\\\\forge.cmd\\\" lint\""
   },
