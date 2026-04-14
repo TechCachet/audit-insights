@@ -70,11 +70,11 @@ function normalizeJqlText(value: string): string {
 
   for (let i = 0; i < 3; i += 1) {
     const nextValue = normalized
-      .replace(/&amp;/gi, "&")
       .replace(/&lt;/gi, "<")
       .replace(/&gt;/gi, ">")
       .replace(/&quot;/gi, "\"")
-      .replace(/&#39;/gi, "'");
+      .replace(/&#39;/gi, "'")
+      .replace(/&amp;/gi, "&");
 
     if (nextValue === normalized) {
       break;
